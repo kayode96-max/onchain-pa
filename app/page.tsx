@@ -5,34 +5,43 @@ import { useAgent } from "./hooks/useAgent";
 import ReactMarkdown from "react-markdown";
 
 /**
- * Terminal Interface for AgentKit
+ * Single Terminal Session Component
  */
-export default function Home() {
+function TerminalSession({ isActive }: { isActive: boolean }) {
   const [input, setInput] = useState("");
   const { messages, sendMessage, isThinking } = useAgent();
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (isActive) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isActive]);
 
-  // Focus input on click
   useEffect(() => {
-    const handleClick = () => {
-      // Only focus if user isn't selecting text
-      if (window.getSelection()?.toString() === "") {
+    if (isActive) {
+      const handleClick = () => {
+        if (window.getSelection()?.toString() === "") {
+          inputRef.current?.focus();
+        }
+      };
+      
+      const timeoutId = setTimeout(() => {
         inputRef.current?.focus();
-      }
-    };
-    document.addEventListener("click", handleClick);
-    return () => document.removeEventListener("click", handleClick);
-  }, []);
+      }, 50);
+
+      document.addEventListener("click", handleClick);
+      return () => {
+        document.removeEventListener("click", handleClick);
+        clearTimeout(timeoutId);
+      };
+    }
+  }, [isActive]);
 
   const onSendMessage = async () => {
     if (!input.trim() || isThinking) return;
@@ -42,10 +51,9 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col flex-grow w-full h-full overflow-hidden">
+    <div className={`flex flex-col flex-grow w-full h-full overflow-hidden ${isActive ? "flex" : "hidden"}`}>
       {/* Terminal Output */}
       <div className="flex-grow overflow-y-auto p-4 scrollbar-custom space-y-2 font-mono text-sm md:text-base pb-2">
-        {/* Welcome Message */}
         <div className="text-green-700/80 mb-6 font-mono text-xs md:text-sm">
           <p>Coinbase AgentKit Terminal [Version 1.0.0]</p>
           <p>(c) 2024 Onchain Corp. All rights reserved.</p>
@@ -120,12 +128,127 @@ export default function Home() {
             onKeyDown={(e) => {
               if (e.key === "Enter") onSendMessage();
             }}
-            autoFocus
             disabled={isThinking}
             autoComplete="off"
             spellCheck="false"
           />
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Terminal Interface with Tabs
+ */
+export default function Home() {
+  const [tabs, setTabs] = useState<{ id: string; name: string }[]>([
+    { id: "1", name: "terminal" }
+  ]);
+  const [activeTabId, setActiveTabId] = useState("1");
+  const [nextId, setNextId] = useState(2);
+
+  const addNewTab = () => {
+    const newId = String(nextId);
+    setTabs(prev => [...prev, { id: newId, name: `terminal-${nextId}` }]);
+    setActiveTabId(newId);
+    setNextId(prev => prev + 1);
+  };
+
+  const closeTab = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (tabs.length === 1) return; // Don't close the last tab
+    
+    const newTabs = tabs.filter(t => t.id !== id);
+    setTabs(newTabs);
+    
+    if (activeTabId === id) {
+      setActiveTabId(newTabs[newTabs.length - 1].id);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center p-0 md:p-4 bg-[#0a0a0a]">
+       <div className="flex flex-col w-full max-w-5xl h-full md:h-[90vh] border border-green-800/50 bg-black shadow-[0_0_30px_rgba(0,255,0,0.05)] relative overflow-hidden rounded-lg">
+            
+        {/* CRT Scanline Overlay */}
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.03),rgba(0,255,0,0.01),rgba(0,0,255,0.03))] z-50 bg-[length:100%_2px,3px_100%] opacity-20 md:rounded-lg"></div>
+        <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,0.9)] z-40 md:rounded-lg"></div>
+
+        {/* Header with Tabs */}
+        <header className="bg-green-900/10 border-b border-green-800/50 flex pt-2 px-2 md:pt-3 md:px-3 items-end gap-1 shrink-0 z-30 backdrop-blur-sm overflow-x-auto scrollbar-none">
+          {/* Traffic Lights */}
+          <div className="flex gap-1.5 mr-4 mb-2 items-center self-center pb-1">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500/50"></div>
+            <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/50"></div>
+            <div className="w-2.5 h-2.5 rounded-full bg-green-500/50"></div>
+          </div>
+
+          {/* Tabs */}
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              onClick={() => setActiveTabId(tab.id)}
+              className={`
+                group relative px-4 py-1.5 rounded-t-lg bg-black border border-b-0 text-xs md:text-sm font-mono cursor-pointer flex items-center gap-2 select-none min-w-[120px] max-w-[200px] transition-all
+                ${activeTabId === tab.id 
+                  ? "border-green-800/50 text-green-400 z-10" 
+                  : "border-transparent bg-transparent text-green-700/50 hover:bg-green-900/10 hover:text-green-600"}
+              `}
+            >
+              <span className="truncate flex-grow">
+                {activeTabId === tab.id ? "~/agent-kit" : tab.name}
+              </span>
+              
+              {/* Close Button */}
+              {tabs.length > 1 && (
+                <button
+                  onClick={(e) => closeTab(e, tab.id)}
+                  className={`
+                    w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400 transition-all
+                    ${activeTabId === tab.id ? "text-green-700" : ""}
+                  `}
+                >
+                  ×
+                </button>
+              )}
+              
+              {/* Active Tab Indicator Line */}
+              {activeTabId === tab.id && (
+                <div className="absolute -bottom-[1px] left-0 right-0 h-[1px] bg-black z-20"></div>
+              )}
+            </div>
+          ))}
+
+          {/* New Tab Button */}
+          <button
+            onClick={addNewTab}
+            className="mb-1 ml-1 p-1.5 text-green-700/50 hover:text-green-400 hover:bg-green-900/20 rounded-md transition-colors"
+            title="New Terminal"
+          >
+            +
+          </button>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-grow flex flex-col relative z-20 overflow-hidden bg-black/90">
+             {tabs.map(tab => (
+               <TerminalSession key={tab.id} isActive={activeTabId === tab.id} />
+             ))}
+        </main>
+
+        {/* Footer */}
+        <footer className="py-1.5 px-3 border-t border-green-800/30 text-[10px] text-green-700/60 bg-green-900/5 flex justify-between shrink-0 z-30 select-none">
+          <div className="flex items-center gap-3">
+             <span>RAM: 64KB OK</span>
+             <span>PID: {activeTabId}</span>
+             <span>AGENT_CORE: ACTIVE</span>
+          </div>
+          <div className="flex gap-3 text-green-700/40">
+            <span>UTF-8</span>
+            <span>Ln 1, Col 1</span>
+          </div>
+        </footer>
       </div>
     </div>
   );
